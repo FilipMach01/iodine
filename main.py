@@ -1,6 +1,6 @@
 import pygame, sys
 import math
-from pygame.locals import QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_SPACE
+from pygame.locals import QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_SPACE, K_ESCAPE
 import random
 
 
@@ -10,10 +10,12 @@ def distance(point1, point2):
     c = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
     return c
 
+
 def reset_enemy(enemy):
     enemy[0] = random.randint(0, resolution[0])
     enemy[1] -= resolution[1]
-    
+
+
 # inicializace (pocatecni nastaveni, spusteni)
 pygame.init()
 resolution = (400, 300)
@@ -22,7 +24,6 @@ pygame.display.set_caption('Circle game')
 clock = pygame.time.Clock()
 font = pygame.freetype.Font('font.ttf', 15)
 score = 0
-
 
 # music/sounds
 music = pygame.mixer.music.load('music.mp3')
@@ -59,6 +60,8 @@ for index in range(0, number_of_enemies):
 #     enemy = [20, 30]  # 1. beh cyklu   # enemies[0]
 #     enemy = [40, 30]  # 2. beh cyklu   # enemies[1]
 
+paused = False
+
 # herni smycka
 running = True
 while running:
@@ -78,6 +81,8 @@ while running:
             elif event.key == K_SPACE:
                 shots.append([player_x, player_y])
                 print(len(shots))
+            elif event.key == K_ESCAPE:
+                paused = not paused
         elif event.type == KEYUP:
             if event.key == K_LEFT:
                 #klavesa uvolnena
@@ -89,7 +94,8 @@ while running:
                 if player_x < resolution[0]:
                     delta_x -= player_speed
 
-    player_x += delta_x
+    if not paused:
+        player_x += delta_x
     # y += delta_y
 
     #      pravy okraj          levy okraj
@@ -117,7 +123,7 @@ while running:
     #     enemy[1] += enemy_speed
 
     shots_to_remove = list()
-    
+
     # render enemies
     for enemy in enemies:
         # enemy[0], enemy[1]  <- enemy: List              enemy = [20, 30]
@@ -126,7 +132,8 @@ while running:
         # print(enemy[1])
 
         # enemy[1] = enemy[1] + enemy_speed
-        enemy[1] += enemy_speed
+        if not paused:
+            enemy[1] += enemy_speed
 
         for shot in shots:
             if distance(shot, enemy) <= shot_radius + enemy_radius:
@@ -164,16 +171,22 @@ while running:
     for shot in shots:
         if shot[1] <= 0:
             shots_to_remove.append(shot)
-        else:
+        elif not paused:
             shot[1] -= shot_speed
         pygame.draw.circle(screen, (255, 255, 255), shot, shot_radius)
-        
+
     for shot in shots_to_remove:
         shots.remove(shot)
-    
+
     for life in range(player_lives):
         pygame.draw.circle(screen, (255, 0, 0), (30 + life * 20, 30), 8)
 
     font.render_to(screen, (240, 20), str(score).zfill(6), (224, 234, 255))
+
+    if paused:
+        rect = font.get_rect('paused')
+        font.render_to(screen, ((resolution[0] - rect.width) / 2, (resolution[1] - rect.height) / 2),
+                       'paused', (224, 234, 255))
+
     pygame.display.update()
     clock.tick(FPS)
