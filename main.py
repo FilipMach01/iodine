@@ -1,14 +1,20 @@
 import pygame, sys
 import math
+import pygame.mixer as mixer
 from pygame.locals import QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_SPACE, K_ESCAPE, K_RETURN, K_UP, K_DOWN
 import random
+from collections import deque
 
 
 def reset():
-    global score, player_x, player_y, delta_x, delta_y, shots, shot_radius, shot_speed, player_speed, enemy_speed, player_radius, \
-           enemy_radius, player_lives, number_of_enemies, enemies, powerup_radius,\
-           powered_up, powershots, powershot_radius, powershot_speed,pw_heart_radius,pw_heart
+    global score,high_score, player_x, player_y, delta_x, delta_y, shots, shot_radius, shot_speed, player_speed, enemy_speed, player_radius, \
+        enemy_radius, player_lives, number_of_enemies, enemies, powerup_radius, \
+        powered_up, powershots, powershot_radius, powershot_speed, pw_heart_radius, pw_heart
     score = 0
+    with open('high_score.dat', "r+") as file:
+        for line in file:
+            high_score = int(line.strip())
+
     player_x, player_y = (200, 260)
     delta_x = 0
     delta_y = 0
@@ -45,8 +51,9 @@ def reset_powerup():
     # powerup se objevi o 2 - 4 obrazovky vys
     powerup = [random.randint(0, resolution[0]), - random.randint(2 * resolution[1], 5 * resolution[1])]
 
+
 def reset_pw_heart():
-    global pw_heart_speed,pw_heart
+    global pw_heart_speed, pw_heart
     pw_heart_speed = random.randint(50, 100) / FPS
     pw_heart = [random.randint(0, resolution[0]), - random.randint(4 * resolution[1], 11 * resolution[1])]
 
@@ -74,8 +81,11 @@ def shoot_enemy(shots, enemy, enemy_radius, shot_radius, shots_to_remove):
         # doslo k zasazeni nepritele strelou
         if distance(shot, enemy) <= shot_radius + enemy_radius:
             score += 1
+            explosions.append({"coord": enemy[:], "frame": 0})
             reset_enemy(enemy)
             shots_to_remove.append(shot)
+
+            pygame.mixer.Channel(0).play(pygame.mixer.Sound('explosion_sound.mp3'), maxtime=600)
 
 
 def reset_enemy(enemy):
@@ -100,6 +110,35 @@ def render_shots(shots_list, shots_to_remove_list, radius, speed, image):
             shots_list.remove(shot)
 
 
+def scroll(layer, offset):
+    target = pygame.Surface(layer.get_size(), pygame.SRCALPHA)
+    target.blit(layer, (0, offset))
+    target.blit(layer, (0, offset - layer.get_height()))
+    return target
+
+
+def draw_background():
+    global background_layers, screen, player_x, player_y, delta_x, delta_y
+    for number, layer in enumerate(background_layers):
+        layer = scroll(layer, 0.5 * (len(background_layers) - number))
+        background_layers[number] = layer
+        x = player_x / (number + 1)
+        y = player_y / (number + 1)
+
+        screen.blit(layer, (
+            (screen.get_width() - layer.get_width() - x) / 2, (screen.get_height() - layer.get_height() - y) / 2))
+
+
+def generate_background():
+    global background_layers, screen, player_x, player_y, delta_x, delta_y
+    for number, layer in enumerate(background_layers):
+        for star in range(200):
+            x = random.randint(0, layer.get_width())
+            y = random.randint(0, layer.get_height())
+
+            pygame.draw.rect(layer, (250 - 40 * number, 250 - 40 * number, 250 - 40 * number), (x, y, 1, 1))
+
+
 def render_text(text, y_offset=0, color=(109, 68, 212), bg_color=(0, 0, 0)):
     global resolution
     rect = font.get_rect(text)
@@ -120,6 +159,7 @@ def menu():
                 if menu_selection == 0:
                     reset()
                     in_menu = False
+                    mixer.music.play(-1)
                 elif menu_selection == 1:
                     running = False
             elif event.key == K_DOWN:
@@ -143,9 +183,9 @@ def menu():
 
 
 def game_loop():
-    global player_x, player_y, delta_x, delta_y, player_speed, player_lives, enemies, enemy_speed, shots, shot_speed, score, paused, running, in_menu,\
-        resolution, screen, player_image, enemy_image, shot_image, background_image, powerup_image, powershot_image, heart_image, powerup_radius,\
-        powered_up, powershots, powershot_radius, powershot_speed, music, frames_since_last_shot, fire_rate,pw_heart_radius,pw_heart
+    global player_x, player_y, delta_x, delta_y, player_speed, player_lives, enemies, enemy_speed, shots, shot_speed, score, paused, running, in_menu, \
+        resolution, screen, player_image, enemy_image, shot_image, background_image, powerup_image, powershot_image, heart_image, powerup_radius, \
+        powered_up, powershots, powershot_radius, powershot_speed, music, frames_since_last_shot, fire_rate, pw_heart_radius, pw_heart
     # zpracovani eventu
     for event in pygame.event.get():
         if event.type == QUIT:
@@ -168,8 +208,10 @@ def game_loop():
             elif event.key == K_SPACE:
                 if frames_since_last_shot > fire_rate:
                     frames_since_last_shot = 0
+                    pygame.mixer.Channel(1).play(pygame.mixer.Sound('shot_sound.mp3'), maxtime=600)
                     if powered_up > 0:
                         powershots.append([player_x, player_y])
+
                     else:
                         shots.append([player_x, player_y])
             elif event.key == K_ESCAPE:
@@ -202,18 +244,24 @@ def game_loop():
         player_y = clip(1, player_y + delta_y, resolution[1] - 1)
 
     # renderovani
-    screen.fill((12, 64, 207))
+    screen.fill((0, 0, 0))
     # player
-    screen.blit(background_image,
-                (resolution[0] - background_image.get_size()[0] / 2,
-                 resolution[1] - background_image.get_size()[1] / 2))
 
-    screen.blit(player_image, (player_x - player_image.get_size()[0] / 2,
-                               player_y - player_image.get_size()[1] / 2))
+    draw_background()
 
-    if powered_up>0:
-        screen.blit(player_ani1, (player_x - player_ani1.get_size()[0] / 2,
-                                    player_y - player_ani1.get_size()[1] / 2))
+    img = player_image
+    if delta_x < 0:
+        img = player_image_left
+    if delta_x > 0:
+        img = player_image_right
+    screen.blit(img, (player_x - img.get_size()[0] / 2,
+                      player_y - img.get_size()[1] / 2))
+
+    if powered_up > 0:
+        img = player_ani[0]
+        player_ani.rotate(1)
+        screen.blit(img, (player_x - img.get_size()[0] / 2,
+                          player_y - img.get_size()[1] / 2))
 
     # for index in [0, 1, 2]:
     #     enemies[index] [1] += enemy_speed
@@ -236,13 +284,9 @@ def game_loop():
         reset_pw_heart()
         player_lives += 1
 
-
     if pw_heart[1] > resolution[1]:
         reset_pw_heart()
 
-
-
-    
     if not paused:
         powerup[1] += powerup_speed
     screen.blit(powerup_image, (powerup[0] - powerup_image.get_size()[0] / 2,
@@ -251,7 +295,6 @@ def game_loop():
         pw_heart[1] += pw_heart_speed
     screen.blit(heart_image, (pw_heart[0] - heart_image.get_size()[0] / 2,
                               pw_heart[1] - heart_image.get_size()[1] / 2))
-
 
     shots_to_remove = list()
     powershots_to_remove = list()
@@ -278,12 +321,27 @@ def game_loop():
             reset_enemy(enemy)
         if player_lives == 0:
             in_menu = True
+            if score > high_score:
+                with open('high_score.dat',"w+")as file:
+                    file.write(str (score))
         if enemy[1] >= resolution[1]:
             reset_enemy(enemy)
-            
 
         screen.blit(enemy_image, (enemy[0] - enemy_image.get_size()[0] / 2,
                                   enemy[1] - enemy_image.get_size()[1] / 2))
+    explosions_to_remove = list()
+    for explosion in explosions:
+        screen.blit(
+            explosion_image,
+            (explosion["coord"][0] - enemy_radius, explosion["coord"][1] - enemy_radius),
+            (explosion["frame"] * (enemy_radius-1) * 2 , 0, (enemy_radius-1) * 2, enemy_radius * 2)
+        )
+        explosion["frame"] += 1
+
+        if explosion["frame"] > 17:
+            explosions_to_remove.append(explosion)
+    for explosion in explosions_to_remove:
+        explosions.remove(explosion)
 
     render_shots(shots, shots_to_remove, shot_radius, shot_speed, shot_image)
     render_shots(powershots, powershots_to_remove, powershot_radius,
@@ -291,7 +349,9 @@ def game_loop():
     for life in range(player_lives):
         screen.blit(heart_image, (15 + life * 20, 15))
 
-        font.render_to(screen, (240, 20), str(score).zfill(6), (224, 234, 255))
+    font.render_to(screen, (240, 20), str(score).zfill(6), (224, 234, 255))
+    font.render_to(screen, (240, 40), str(high_score).zfill(6), (124, 134, 155))
+
 
     if paused:
         render_text(text='paused', color=(224, 234, 255))
@@ -301,22 +361,29 @@ def game_loop():
 
 # inicializace (pocatecni nastaveni, spusteni)
 pygame.init()
+mixer.init()
+mixer.music.load('music.mp3')
+mixer.music.set_volume(0.1)
 resolution = (400, 300)
-screen = pygame.display.set_mode(resolution,pygame.locals.RESIZABLE|pygame.locals.SCALED)
+screen = pygame.display.set_mode(resolution, pygame.locals.RESIZABLE | pygame.locals.SCALED)
 pygame.display.set_caption('iodine')
 clock = pygame.time.Clock()
 font = pygame.freetype.Font('font.ttf', 15)
 
-
-
-player_image = pygame.image.load("player1.png").convert_alpha()
 enemy_image = pygame.image.load("enemy0.png").convert_alpha()
+explosion_image = pygame.image.load("explosion_spritetheet.png").convert_alpha()
 shot_image = pygame.image.load("shots0.png").convert_alpha()
 background_image = pygame.image.load("sky.gif").convert_alpha()
+background_layers = [pygame.Surface((resolution[0] * 2, resolution[1] * 2), pygame.SRCALPHA) for _ in range(5)]
+generate_background()
 powerup_image = pygame.image.load('powerup2.png').convert_alpha()
 powershot_image = pygame.image.load('pwr_shot.png').convert_alpha()
 heart_image = pygame.image.load('heart.png').convert_alpha()
-player_ani1 = pygame.image.load('player_ani1.png').convert_alpha()
+player_ani = deque(
+    [pygame.image.load('player_ani1.png').convert_alpha(), pygame.image.load('player_ani2.png').convert_alpha()])
+player_image = pygame.image.load("player1.png").convert_alpha()
+player_image_left = pygame.image.load("pixil-frame-0 (5).png").convert_alpha()
+player_image_right = pygame.image.load("player_image_right3.png").convert_alpha()
 
 FPS = 60
 player_x, player_y = (200, 260)
@@ -339,8 +406,10 @@ enemy_radius = 15
 #     [100, -200],
 
 # ]
+explosions = list()
+
 player_lives = 3
-number_of_enemies = 10
+number_of_enemies = 1
 enemies = list()  # []
 for index in range(0, number_of_enemies):
     x = random.randint(0, resolution[0])
